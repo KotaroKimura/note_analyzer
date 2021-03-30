@@ -1,0 +1,11 @@
+version: '3'
+services:
+  batch:
+    build:
+      context: .
+      dockerfile: ./batch/docker/golang/Dockerfile
+    volumes:
+      - .:/go/src
+    env_file: ./batch/docker/golang/.env
+    tty: true
+    stdin_open: true
