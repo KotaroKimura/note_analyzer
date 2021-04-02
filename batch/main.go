@@ -3,72 +3,21 @@ package main
 import (
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
-	"github.com/PuerkitoBio/goquery"
-	"github.com/sclevine/agouti"
+	"github.com/KotaroKimura/note_analyzer/batch/chrome"
 )
 
 var (
-	noteID       = os.Getenv("NOTE_ID")
-	notePassword = os.Getenv("NOTE_PASSWORD")
-	noteURL      = os.Getenv("NOTE_URL")
+	noteURL = os.Getenv("NOTE_URL")
+	titleSELECTOR = os.Getenv("TITLE_SELECTOR")
+	viewSELECTOR = os.Getenv("VIEW_SELECTOR")
+	commentSELECTOR = os.Getenv("COMMENT_SELECTOR")
+	sukiSELECTOR = os.Getenv("SUKI_SELECTOR")
 )
 
-type Client struct {
-	D *agouti.WebDriver
-	P *agouti.Page
-}
-
-func NewClient() (*Client, error) {
-	d := agouti.ChromeDriver(
-		agouti.ChromeOptions(
-			"args", []string{
-				"--headless",
-				"--disable-gpu",
-				"--no-sandbox",
-				"--window-size=1280,800",
-			},
-		),
-	)
-	err := d.Start()
-	if err != nil {
-		return nil, err
-	}
-
-	p, err := d.NewPage()
-	if err != nil {
-		return nil, err
-	}
-
-	return &Client{
-		D: d,
-		P: p,
-	}, nil
-}
-
-func (p *Client) Close() {
-	p.P.Destroy()
-	p.D.Stop()
-}
-
-func Login(p *agouti.Page) error {
-	if err := p.FirstByName("login").Fill(noteID); err != nil {
-		return err
-	}
-	if err := p.FirstByName("password").Fill(notePassword); err != nil {
-		return err
-	}
-	if err := p.FirstByName("$ctrl.$scope.login_form").Submit(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func main() {
-	c, err := NewClient()
+	c, err := chrome.NewClient()
 	if err != nil {
 		fmt.Printf("%+v.\n", err)
 		return
@@ -81,7 +30,7 @@ func main() {
 	}
 	time.Sleep(time.Second)
 
-	if err = Login(c.P); err != nil {
+	if err = c.Login(); err != nil {
 		fmt.Printf("%+v.\n", err)
 		return
 	}
@@ -93,15 +42,36 @@ func main() {
 		return
 	}
 
-	reader := strings.NewReader(content)
-	doc, err := goquery.NewDocumentFromReader(reader)
+	titles, err := c.ScrapeBySelector(content, titleSELECTOR)
 	if err != nil {
 		fmt.Printf("%+v.\n", err)
 		return
 	}
 
-	doc.Find(".o-statsContent__tableLabel").Each(func(i int, s *goquery.Selection) {
-		article := s.Text()
-		fmt.Printf("Review %d: %s\n", i, article)
-	})
+	views, err := c.ScrapeBySelector(content, viewSELECTOR)
+	if err != nil {
+		fmt.Printf("%+v.\n", err)
+		return
+	}
+
+	comments, err := c.ScrapeBySelector(content, commentSELECTOR)
+	if err != nil {
+		fmt.Printf("%+v.\n", err)
+		return
+	}
+
+	sukis, err := c.ScrapeBySelector(content, sukiSELECTOR)
+	if err != nil {
+		fmt.Printf("%+v.\n", err)
+		return
+	}
+
+	for i, t := range titles {
+		v := views[i+1]
+		c := comments[i+1]
+		s := sukis[i+1]
+
+		sql := fmt.Sprintf("INSERT INTO articles (title, view, comment, suki) VALUES (%s, %s, %s, %s)", t, v, c, s)
+		fmt.Println(sql)
+	}
 }
